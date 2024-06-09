@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation sample template to create an EC2 with Apache using cross-stack referencing.
+  Note: You will be billed for the AWS resources that you use when you create a stack from this template.
+
+Parameters:
+  TagValue:
+    Type: String
+    Default: Project-Instance
+    Description: Tag value to apply to the EC2 instance.
+
+  InstanceType:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /project/ec2/instanceType # <-- SSM parameter name that stores
+    Description: Name of an SSM Parameter (String) whose value is the EC2 instance type (e.g., "t2.micro").
+
+Mappings:
+  RegionMap:
+    us-west-2:
+      AMI: ami-06a974f9b8a97ecf2
+    ca-central-1:
+      AMI: ami-00959a3c022b1cc1e
+    us-west-1:
+      AMI: ami-00142eb1747a493d9
+    us-east-1:
+      AMI: ami-08982f1c5bf93d976
+
+Resources:
+  projectOneInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      SubnetId: !ImportValue SampleNetworkCrossStack-SubnetID
+      SecurityGroupIds:
+        - !ImportValue SampleNetworkCrossStack-SecurityGroupID
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          systemctl enable httpd
+          echo "<h1>Ade Apache but somewhere in your mind</h1>" > /var/www/html/index.html
+      Tags:
+        - Key: Name
+          Value: !Ref TagValue
+
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  MyEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref projectOneInstance
+      AllocationId: !GetAtt MyEIP.AllocationId
+
+Outputs:
+  privateIPV4Address:
+    Description: Private IPv4 of EC2
+    Value: !GetAtt projectOneInstance.PrivateIp
+  InstancePrivateDNS:
+    Description: Private DNS of EC2
+    Value: !GetAtt projectOneInstance.PrivateDnsName
